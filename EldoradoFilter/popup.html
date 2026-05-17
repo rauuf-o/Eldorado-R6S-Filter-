@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Eldorado Filter</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="header">
+    <h3>Eldorado Filter</h3>
+  </div>
+  
+  <div class="container">
+    <label class="toggle">
+      <input type="checkbox" id="showPC">
+      <span class="label-text">Show PC Orders</span>
+    </label>
+
+    <label class="toggle">
+      <input type="checkbox" id="showPS">
+      <span class="label-text">Show PlayStation Orders</span>
+    </label>
+
+    <label class="toggle">
+      <input type="checkbox" id="showXbox">
+      <span class="label-text">Show Xbox Orders</span>
+    </label>
+
+    <hr>
+
+    <label class="toggle">
+      <input type="checkbox" id="enableSounds">
+      <span class="label-text">Enable sounds</span>
+    </label>
+    
+    <hr>
+
+    <div class="pitch-container">
+      <label for="pitchTemplate" class="pitch-label">⚡ Auto-Reply Pitch</label>
+      <textarea id="pitchTemplate" class="pitch-textarea" placeholder="Hey! I can start your order immediately..."></textarea>
+      <p class="pitch-hint">You can use <strong>[GAMES]</strong> and <strong>[PRICE]</strong> in your text to auto-insert the R6S calculations!</p>
+    </div>
+
+    <div class="pitch-container" style="margin-top: 15px;">
+      <label class="pitch-label">🎮 R6S Pricing ($ per win)</label>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+        <div style="display: flex; flex-direction: column;">
+          <label style="font-size: 11px; color: #a1a1aa;">Gold & Below</label>
+          <input type="number" id="priceBase" step="0.5" value="1.0" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px; border-radius: 4px; font-size: 12px;">
+        </div>
+        <div style="display: flex; flex-direction: column;">
+          <label style="font-size: 11px; color: #06b6d4;">Platinum</label>
+          <input type="number" id="pricePlat" step="0.5" value="1.5" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px; border-radius: 4px; font-size: 12px;">
+        </div>
+        <div style="display: flex; flex-direction: column;">
+          <label style="font-size: 11px; color: #10b981;">Emerald</label>
+          <input type="number" id="priceEme" step="0.5" value="2.0" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px; border-radius: 4px; font-size: 12px;">
+        </div>
+        <div style="display: flex; flex-direction: column;">
+          <label style="font-size: 11px; color: #8b5cf6;">Diamond</label>
+          <input type="number" id="priceDia" step="0.5" value="3.0" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px; border-radius: 4px; font-size: 12px;">
+        </div>
+        <div style="display: flex; flex-direction: column; grid-column: span 2;">
+          <label style="font-size: 11px; color: #ef4444;">Champion</label>
+          <input type="number" id="priceChamp" step="0.5" value="4.0" style="background: rgba(255,255,255,0.1); border: none; color: white; padding: 4px; border-radius: 4px; font-size: 12px;">
+        </div>
+      </div>
+    </div>
+
+    <button id="saveBtn">Save Settings</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

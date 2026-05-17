@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Eldorado Booster Hub PRO",
+  "version": "1.0",
+  "description": "The ultimate seller companion for Eldorado.gg. Real-time order filtering, advanced R6S rank & pricing calculators, and auto-submit messaging.",
+  "permissions": [
+    "storage",
+    "clipboardWrite"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.eldorado.gg/*", "*://eldorado.gg/*", "*://*.talkjs.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}
