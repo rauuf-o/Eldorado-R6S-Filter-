@@ -60,11 +60,14 @@ let currentSettings = {
   showXbox: false,
   enableSounds: true,
   pitchTemplate: "Hey! 👋 Thank you for choosing us! 🏆\n\nI've just reviewed your order details, and I can start your boost immediately! Here is your custom package:\n\n🎮 Total Games: [GAMES] Wins\n💰 Special Price: $[PRICE]\n\n🔥 Why Choose Us?\n✅ Top 500 Champion Boosters\n✅ 90%+ Win Rate (Fast & Safe)\n✅ Safe Play: Premium VPN + Offline Mode\n✅ Real-time progress updates in chat!\n\nWe are ready to start right now. If everything looks good, please confirm the order and we will jump on instantly! 🚀 Let us know if you have any questions! Let's get those wins! 💪",
-  priceBase: 1.0,
-  pricePlat: 1.5,
-  priceEme: 2.0,
-  priceDia: 3.0,
-  priceChamp: 4.0
+  priceCop: 0.8,
+  priceBro: 1.0,
+  priceSil: 1.2,
+  priceGol: 1.5,
+  pricePlat: 2.0,
+  priceEme: 2.5,
+  priceDia: 3.5,
+  priceChamp: 5.0
 };
 
 function updateSettings(settings) {
@@ -266,6 +269,12 @@ function startR6Tracker(template) {
   const r6Interval = setInterval(() => {
     attempts++;
     
+    // If closed explicitly in view-only mode, exit early
+    if (window.__eldoradoBreakdownClosed && !template) {
+      clearInterval(r6Interval);
+      return;
+    }
+    
     const fullText = document.body.innerText || '';
     const currentRankMatch = fullText.match(/Current Rank\s*([a-zA-Z]+(?:\s*[IV]+)?|Champion)/i);
     const currentRpMatch = fullText.match(/Current RP\s*(\d+)/i);
@@ -329,7 +338,11 @@ function startR6Tracker(template) {
               
               if (gamesInThisTier > 0) {
                 // Determine price for this tier
-                let tierPrice = currentSettings.priceBase;
+                let tierPrice = currentSettings.priceBro;
+                if (tier.name === 'Copper') tierPrice = currentSettings.priceCop;
+                if (tier.name === 'Bronze') tierPrice = currentSettings.priceBro;
+                if (tier.name === 'Silver') tierPrice = currentSettings.priceSil;
+                if (tier.name === 'Gold') tierPrice = currentSettings.priceGol;
                 if (tier.name === 'Platinum') tierPrice = currentSettings.pricePlat;
                 if (tier.name === 'Emerald') tierPrice = currentSettings.priceEme;
                 if (tier.name === 'Diamond') tierPrice = currentSettings.priceDia;
@@ -433,26 +446,35 @@ function startR6Tracker(template) {
         if (closeBtn) {
           closeBtn.onmouseover = () => closeBtn.style.color = '#ef4444';
           closeBtn.onmouseout = () => closeBtn.style.color = '#94a3b8';
-          closeBtn.addEventListener('click', () => breakdownCard.remove());
+          closeBtn.addEventListener('click', () => {
+            window.__eldoradoBreakdownClosed = true;
+            breakdownCard.remove();
+          });
         }
 
-        finalPitch = finalPitch.replace(/\[GAMES\]/g, totalGamesNeeded);
-        finalPitch = finalPitch.replace(/\[PRICE\]/g, totalPrice.toFixed(2));
+        if (finalPitch) {
+          finalPitch = finalPitch.replace(/\[GAMES\]/g, totalGamesNeeded);
+          finalPitch = finalPitch.replace(/\[PRICE\]/g, totalPrice.toFixed(2));
+        }
       }
       
-      chrome.storage.local.set({
-        eldorado_auto_pitch: finalPitch,
-        calculate_r6_rp: false
-      }, () => {
-        startChatFinder(finalPitch);
-      });
+      if (finalPitch) {
+        chrome.storage.local.set({
+          eldorado_auto_pitch: finalPitch,
+          calculate_r6_rp: false
+        }, () => {
+          startChatFinder(finalPitch);
+        });
+      }
       return;
     }
     
-    // Give up finding R6S stats after 10 seconds (20 attempts) and just run the normal chat finder
+    // Give up finding R6S stats after 10 seconds (20 attempts)
     if (attempts > 20) {
       clearInterval(r6Interval);
-      startChatFinder(template);
+      if (template) {
+        startChatFinder(template);
+      }
     }
   }, 500);
 }
@@ -700,9 +722,25 @@ function throttledProcess() {
 function initializeObserver() {
   const isEldorado = location.hostname.includes('eldorado.gg');
 
+  function checkAndRunViewOnlyBreakdown() {
+    if (!isEldorado || window !== window.top) return;
+    const isOrderPage = location.pathname.includes('/orders/') || location.pathname.includes('/order/');
+    if (isOrderPage) {
+      const alreadyHasBreakdown = document.querySelector('.eldorado-r6-breakdown');
+      if (!alreadyHasBreakdown && !window.__eldoradoBreakdownClosed) {
+        chrome.storage.local.get(['eldorado_auto_pitch'], (res) => {
+          if (!res.eldorado_auto_pitch) {
+            startR6Tracker(null);
+          }
+        });
+      }
+    }
+  }
+
   if (isEldorado) {
     // Initial run
     processAllOrders();
+    checkAndRunViewOnlyBreakdown();
   }
 
   // If we navigated to a new page after clicking Quick Pitch, start the chat finder or R6 Tracker
@@ -734,7 +772,9 @@ function initializeObserver() {
     setInterval(() => {
       if (currentUrl !== location.href) {
         currentUrl = location.href;
+        window.__eldoradoBreakdownClosed = false; // Reset close state on navigation
         document.querySelectorAll('.eldorado-r6-breakdown').forEach(el => el.remove());
+        checkAndRunViewOnlyBreakdown();
       }
     }, 500);
 

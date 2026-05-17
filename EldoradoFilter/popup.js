@@ -4,11 +4,14 @@ const defaultSettings = {
   showXbox: false,
   enableSounds: true,
   pitchTemplate: "Hey! 👋 Thank you for choosing us! 🏆\n\nI've just reviewed your order details, and I can start your boost immediately! Here is your custom package:\n\n🎮 Total Games: [GAMES] Wins\n💰 Special Price: $[PRICE]\n\n🔥 Why Choose Us?\n✅ Top 500 Champion Boosters\n✅ 90%+ Win Rate (Fast & Safe)\n✅ Safe Play: Premium VPN + Offline Mode\n✅ Real-time progress updates in chat!\n\nWe are ready to start right now. If everything looks good, please confirm the order and we will jump on instantly! 🚀 Let us know if you have any questions! Let's get those wins! 💪",
-  priceBase: 1.0,
-  pricePlat: 1.5,
-  priceEme: 2.0,
-  priceDia: 3.0,
-  priceChamp: 4.0
+  priceCop: 0.8,
+  priceBro: 1.0,
+  priceSil: 1.2,
+  priceGol: 1.5,
+  pricePlat: 2.0,
+  priceEme: 2.5,
+  priceDia: 3.5,
+  priceChamp: 5.0
 };
 
 // Map checkboxes to their elements
@@ -22,7 +25,10 @@ const checkboxes = {
 const pitchTextarea = document.getElementById('pitchTemplate');
 const saveBtn = document.getElementById('saveBtn');
 const priceInputs = {
-  priceBase: document.getElementById('priceBase'),
+  priceCop: document.getElementById('priceCop'),
+  priceBro: document.getElementById('priceBro'),
+  priceSil: document.getElementById('priceSil'),
+  priceGol: document.getElementById('priceGol'),
   pricePlat: document.getElementById('pricePlat'),
   priceEme: document.getElementById('priceEme'),
   priceDia: document.getElementById('priceDia'),
