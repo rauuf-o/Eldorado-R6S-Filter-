@@ -171,10 +171,41 @@ function processAllOrders() {
         card.style.display = ''; // Show the card
       }
       
+      // Inject professional custom styling to make each card look separated, clean and pro!
+      card.style.transition = 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)';
+      card.style.margin = '16px 0'; // Clean vertical separation spacing
+      card.style.borderRadius = '12px'; // Sleek rounded corners
+      card.style.border = '1px solid #334155'; // Thin elegant border
+      card.style.background = 'linear-gradient(135deg, #1e293b, #0f172a)'; // Modern slate dark gradient
+      card.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15)'; // High-end drop shadow
+      card.style.padding = '16px'; // Generous breathing room
+      card.style.display = 'block'; // Make it behave like a clean flex block
+      card.style.position = 'relative';
+      card.style.overflow = 'hidden';
+      
+      // Distinct left accent color line representing the platform status
+      let accentColor = '#6366f1'; // Indigo
+      if (isPC) accentColor = '#10b981'; // Green for PC
+      if (isPS) accentColor = '#3b82f6'; // PlayStation Blue
+      if (isXbox) accentColor = '#22c55e'; // Xbox Green
+      
+      card.style.borderLeft = `6px solid ${accentColor}`; // Solid accent strip
+      
+      // Hover micro-animations
+      card.onmouseenter = () => {
+        card.style.transform = 'translateY(-3px)';
+        card.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.3)';
+        card.style.borderColor = accentColor;
+      };
+      card.onmouseleave = () => {
+        card.style.transform = 'translateY(0)';
+        card.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15)';
+        card.style.borderColor = '#334155';
+      };
+      
       // Auto-reply logic for PC orders that we are showing
       if (isPC) {
         // 1. Auto-Clipboard trick: If this is a brand new order, try to copy the pitch automatically.
-        // Browsers sometimes block background copies, but we attempt it anyway.
         if (isNew && document.hasFocus()) {
           try {
             navigator.clipboard.writeText(currentSettings.pitchTemplate);
@@ -186,7 +217,7 @@ function processAllOrders() {
           card.dataset.quickPitchInjected = 'true';
           
           const pitchContainer = document.createElement('div');
-          pitchContainer.style.cssText = 'padding: 8px; text-align: center;';
+          pitchContainer.style.cssText = 'padding: 8px 0 0 0; text-align: center;';
           
           const pitchBtn = document.createElement('button');
           pitchBtn.innerHTML = '⚡ Quick Pitch';
@@ -194,13 +225,17 @@ function processAllOrders() {
             background-color: #38a169;
             color: white;
             border: none;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 800;
             cursor: pointer;
             width: 100%;
-            transition: 0.2s;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 1px;
+            margin-top: 8px;
           `;
           
           pitchBtn.onmouseover = () => pitchBtn.style.backgroundColor = '#2b7a4b';
