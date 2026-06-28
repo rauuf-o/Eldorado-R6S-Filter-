@@ -5,7 +5,8 @@
   "description": "The ultimate seller companion for Eldorado.gg. Real-time order filtering, advanced R6S rank & pricing calculators, and auto-submit messaging.",
   "permissions": [
     "storage",
-    "clipboardWrite"
+    "clipboardWrite",
+    "scripting"
   ],
   "action": {
     "default_popup": "popup.html"

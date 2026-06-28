@@ -53,6 +53,7 @@ script.remove();
 const psRegex = /(playstation|ps\s*4|ps\s*5)/i;
 const xboxRegex = /xbox/i;
 const pcRegex = /(pc|steam|windows|battlenet|bnet|epic|desktop)/i;
+const cs2Regex = /Counter-Strike\s*2|CS2\s*Premier|CS\s*2\s*Premier|CS2\s*Boost/i;
 
 let currentSettings = {
   showPC: true,
@@ -67,7 +68,11 @@ let currentSettings = {
   pricePlat: 2.0,
   priceEme: 2.5,
   priceDia: 3.5,
-  priceChamp: 5.0
+  priceChamp: 5.0,
+  priceCs2_0_10k: 10.0,
+  priceCs2_10_20k: 15.0,
+  priceCs2_20_25k: 20.0,
+  priceCs2_above25k: 25.0
 };
 
 function updateSettings(settings) {
@@ -137,7 +142,7 @@ function processAllOrders() {
   while ((node = walker.nextNode())) {
     const text = node.nodeValue;
     // Fast check to see if this text node contains any keywords
-    if (psRegex.test(text) || xboxRegex.test(text) || pcRegex.test(text)) {
+    if (psRegex.test(text) || xboxRegex.test(text) || pcRegex.test(text) || cs2Regex.test(text)) {
       const card = getCardElement(node.parentElement);
       if (card) cardsToProcess.add(card);
     }
@@ -145,10 +150,13 @@ function processAllOrders() {
   
   // Now evaluate each unique card based on its complete text content
   for (const card of cardsToProcess) {
+    // CRITICAL: skip any of our own injected UI elements
+    if (card.dataset.eldoradoUi || card.closest('[data-eldorado-ui]')) continue;
     const fullText = card.textContent || '';
     const isPS = psRegex.test(fullText);
     const isXbox = xboxRegex.test(fullText);
     const isPC = pcRegex.test(fullText);
+    const isCS2 = cs2Regex.test(fullText);
     
     const isNew = !card.dataset.eldoradoAudioProcessed;
     card.dataset.eldoradoAudioProcessed = 'true';
@@ -159,6 +167,7 @@ function processAllOrders() {
     if (isPC && currentSettings.showPC) shouldShow = true;
     if (isPS && currentSettings.showPS) shouldShow = true;
     if (isXbox && currentSettings.showXbox) shouldShow = true;
+    if (isCS2 && currentSettings.showPC) shouldShow = true; // CS2 follows PC toggle
     
     if (!shouldShow) {
       if (card.style.display !== 'none') {
@@ -191,6 +200,7 @@ function processAllOrders() {
       if (isPC) accentColor = '#10b981'; // Green for PC
       if (isPS) accentColor = '#3b82f6'; // PlayStation Blue
       if (isXbox) accentColor = '#22c55e'; // Xbox Green
+      if (isCS2) accentColor = '#f59e0b'; // Gold/Amber for CS2
       
       card.style.borderLeft = `6px solid ${accentColor}`; // Solid accent strip
       
@@ -206,16 +216,16 @@ function processAllOrders() {
         card.style.borderColor = '#334155';
       };
       
-      // Auto-reply logic for PC orders that we are showing
-      if (isPC) {
-        // 1. Auto-Clipboard trick: If this is a brand new order, try to copy the pitch automatically.
-        if (isNew && document.hasFocus()) {
+      // Auto-reply logic for PC and CS2 orders that we are showing
+      if (isPC || isCS2) {
+        // Auto-Clipboard trick: If this is a brand new order, try to copy the pitch automatically.
+        if (isPC && isNew && document.hasFocus()) {
           try {
             navigator.clipboard.writeText(currentSettings.pitchTemplate);
           } catch(e) {}
         }
         
-        // 3. Quick Pitch Button Injection
+        // Quick Pitch Button Injection (works for both R6S and CS2)
         if (!card.dataset.quickPitchInjected) {
           card.dataset.quickPitchInjected = 'true';
           
@@ -223,9 +233,16 @@ function processAllOrders() {
           pitchContainer.style.cssText = 'padding: 8px 0 0 0; text-align: center;';
           
           const pitchBtn = document.createElement('button');
-          pitchBtn.innerHTML = '⚡ Quick Pitch';
+          
+          // Style the button differently for CS2 vs R6S
+          const btnColor = isCS2 ? '#d97706' : '#38a169';
+          const btnHoverColor = isCS2 ? '#b45309' : '#2b7a4b';
+          const btnLabel = isCS2 ? '🔫 CS2 Quick Pitch' : '⚡ Quick Pitch';
+          const btnShadowColor = isCS2 ? 'rgba(217, 119, 6, 0.3)' : 'rgba(16, 185, 129, 0.2)';
+          
+          pitchBtn.innerHTML = btnLabel;
           pitchBtn.style.cssText = `
-            background-color: #38a169;
+            background-color: ${btnColor};
             color: white;
             border: none;
             padding: 8px 16px;
@@ -234,25 +251,33 @@ function processAllOrders() {
             cursor: pointer;
             width: 100%;
             transition: all 0.2s ease;
-            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+            box-shadow: 0 4px 6px ${btnShadowColor};
             text-transform: uppercase;
             font-size: 11px;
             letter-spacing: 1px;
             margin-top: 8px;
           `;
           
-          pitchBtn.onmouseover = () => pitchBtn.style.backgroundColor = '#2b7a4b';
-          pitchBtn.onmouseout = () => pitchBtn.style.backgroundColor = '#38a169';
+          pitchBtn.onmouseover = () => pitchBtn.style.backgroundColor = btnHoverColor;
+          pitchBtn.onmouseout = () => pitchBtn.style.backgroundColor = btnColor;
           
           pitchBtn.addEventListener('click', (e) => {
+            // Do NOT prevent default - the card link navigates to the order detail page
+            // which is where the tracker will find the rating numbers.
+            
             // Set flags in chrome.storage.local
             chrome.storage.local.set({ 
               eldorado_auto_pitch: currentSettings.pitchTemplate,
-              calculate_r6_rp: true
+              calculate_r6_rp: !isCS2,
+              calculate_cs2_rating: isCS2
             });
             
-            // Start hunting for the R6S Order Details on the next page
-            startR6Tracker(currentSettings.pitchTemplate);
+            // Start the right tracker immediately (will also retry on the detail page via storage flag)
+            if (isCS2) {
+              startCs2Tracker(currentSettings.pitchTemplate);
+            } else {
+              startR6Tracker(currentSettings.pitchTemplate);
+            }
           });
           
           pitchContainer.appendChild(pitchBtn);
@@ -428,18 +453,18 @@ function startR6Tracker(template) {
         // Remove any existing breakdowns first to prevent duplicates
         document.querySelectorAll('.eldorado-r6-breakdown').forEach(el => el.remove());
         
-        // Find the chat box form to inject the UI directly above it
-        const chatForm = document.querySelector('.MessageField__text-form') || document.querySelector('form');
-        if (chatForm && chatForm.parentElement) {
-          chatForm.parentElement.insertBefore(breakdownCard, chatForm);
-        } else {
-          breakdownCard.style.position = 'fixed';
-          breakdownCard.style.top = '20px';
-          breakdownCard.style.right = '20px';
-          breakdownCard.style.zIndex = '999999';
-          breakdownCard.style.width = '400px';
-          document.body.appendChild(breakdownCard);
-        }
+        // ALWAYS attach to document.body as a fixed overlay so React cannot destroy it
+        // Use setAttribute so !important survives any later style mutations
+        breakdownCard.setAttribute('data-eldorado-ui', 'true');
+        breakdownCard.setAttribute('style',
+          'position:fixed!important;top:20px!important;right:20px!important;' +
+          'z-index:2147483647!important;width:420px!important;max-height:85vh!important;overflow-y:auto!important'
+        );
+        document.body.appendChild(breakdownCard);
+        
+        // Store the card HTML so it can be re-injected if React wipes it
+        window.__eldoradoActiveBreakdownHtml = breakdownCard.outerHTML;
+        window.__eldoradoActiveBreakdownClass = 'eldorado-r6-breakdown';
 
         // Add close button functionality
         const closeBtn = breakdownCard.querySelector('.close-breakdown-btn');
@@ -448,6 +473,7 @@ function startR6Tracker(template) {
           closeBtn.onmouseout = () => closeBtn.style.color = '#94a3b8';
           closeBtn.addEventListener('click', () => {
             window.__eldoradoBreakdownClosed = true;
+            window.__eldoradoActiveBreakdownHtml = null;
             breakdownCard.remove();
           });
         }
@@ -472,6 +498,784 @@ function startR6Tracker(template) {
     // Give up finding R6S stats after 10 seconds (20 attempts)
     if (attempts > 20) {
       clearInterval(r6Interval);
+      if (template) {
+        startChatFinder(template);
+      }
+    }
+  }, 500);
+}
+
+// --- React & Standard Field Setters ---
+function setNativeValue(element, value) {
+  const valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+  const prototype = Object.getPrototypeOf(element);
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+  
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(element, value);
+  } else if (valueSetter) {
+    valueSetter.call(element, value);
+  } else {
+    element.value = value;
+  }
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+  element.dispatchEvent(new Event('blur', { bubbles: true }));
+}
+
+function setSelectValue(element, value) {
+  element.value = value;
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+  element.dispatchEvent(new Event('blur', { bubbles: true }));
+}
+
+// --- Custom Offer Automation ---
+function autoFillAndCreateOffer(totalPrice, deadlineDays, statusCallback) {
+  if (statusCallback) statusCallback('Opening form...');
+  console.log(`[Eldorado Filter] autoFillAndCreateOffer — $${totalPrice.toFixed(2)}, ${deadlineDays} day(s)`);
+
+  const logDebug = (msg) => {
+    console.log('[Eldorado Debug] ' + msg);
+    const debugContainers = document.querySelectorAll('.eldorado-debug-logs');
+    debugContainers.forEach(c => {
+      c.style.display = 'block';
+      c.innerHTML += `<div>• ${msg}</div>`;
+      c.scrollTop = c.scrollHeight;
+    });
+  };
+
+  // Helper function to check visibility correctly (supporting position: fixed)
+  const isElementVisible = (el) => {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return false;
+    try {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+    } catch(e) {}
+    return true;
+  };
+
+  // ── Step 1: Find & click the "Create Offer" / "Custom Offer" button ───────
+  const offerKeywords = ['create offer', 'custom offer', 'send offer', 'make offer', 'place offer', 'counter offer'];
+  const btns = Array.from(document.querySelectorAll('button, a, [role="button"]')).filter(el => {
+    if (!isElementVisible(el) || el.closest('[data-eldorado-ui]')) return false;
+    const t = (el.textContent || '').toLowerCase().trim();
+    return t.length < 50 && offerKeywords.some(kw => t.includes(kw));
+  }).sort((a, b) => (a.tagName === 'BUTTON' ? -1 : 1));
+
+  if (!btns[0]) {
+    if (statusCallback) statusCallback('Offer button not found!');
+    console.warn('[Eldorado Filter] No offer button. Visible buttons:', 
+      Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t));
+    return;
+  }
+
+  console.log('[Eldorado Filter] Clicking:', btns[0].textContent.trim());
+  btns[0].click();
+  btns[0].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+  // ── Step 2: Wait for the "Create offer" modal to appear ──────────────────
+  let attempts = 0;
+  const waitForModal = setInterval(() => {
+    attempts++;
+
+    let modal = null;
+
+    // Priority 1: role="dialog"
+    const dialogs = document.querySelectorAll('[role="dialog"], [role="alertdialog"]');
+    for (const d of dialogs) {
+      if (!d.closest('[data-eldorado-ui]') && isElementVisible(d) && d.querySelector('input')) {
+        modal = d;
+        break;
+      }
+    }
+
+    // Priority 2: scan for a div/section containing "Create offer" title + input
+    if (!modal) {
+      const allDivs = Array.from(document.querySelectorAll('div, section, aside'));
+      for (const el of allDivs) {
+        if (el.closest('[data-eldorado-ui]')) continue;
+        if (!isElementVisible(el)) continue;
+        const directText = Array.from(el.childNodes)
+          .filter(n => n.nodeType === Node.TEXT_NODE || (n.nodeType === Node.ELEMENT_NODE && ['H1','H2','H3','H4','H5','H6','SPAN','P'].includes(n.nodeName)))
+          .map(n => (n.textContent || '').trim()).join(' ').toLowerCase();
+        if ((directText.includes('create offer') || directText.includes('custom offer')) && el.querySelector('input')) {
+          if (!modal || el.contains(modal) === false) {
+            modal = el;
+          }
+        }
+      }
+    }
+
+    // Priority 3: fallback — any visible form with an input
+    if (!modal) {
+      const forms = Array.from(document.querySelectorAll('form'))
+        .filter(f => !f.closest('[data-eldorado-ui]') && isElementVisible(f) && f.querySelector('input'));
+      if (forms[0]) modal = forms[0];
+    }
+
+    if (!modal) {
+      if (attempts > 30) {
+        clearInterval(waitForModal);
+        if (statusCallback) statusCallback('Modal not found!');
+        console.warn('[Eldorado Filter] Gave up waiting for modal.');
+      }
+      return;
+    }
+
+    clearInterval(waitForModal);
+    logDebug('Modal found in content script: ' + (modal.className || modal.tagName));
+
+    // ── Step 3: Find the price input ─────────────────────────────────────────
+    let priceInput = null;
+
+    // Proximity search: find the input near "Price" label
+    let priceLabel = null;
+    const allEls = Array.from(modal.querySelectorAll('*'));
+    for (const el of allEls) {
+      const text = (el.textContent || '').trim();
+      if (/^price\s*\$:?$/i.test(text) || /^price:?$/i.test(text)) {
+        priceLabel = el;
+        logDebug('Found price label with text: ' + text);
+        break;
+      }
+    }
+    if (!priceLabel) {
+      for (const el of allEls) {
+        const text = (el.textContent || '').trim().toLowerCase();
+        if (text.includes('price') && text.length < 15) {
+          priceLabel = el;
+          break;
+        }
+      }
+    }
+
+    if (priceLabel) {
+      let parent = priceLabel.parentElement;
+      while (parent && parent !== modal) {
+        const foundInput = parent.querySelector('input');
+        if (foundInput && isElementVisible(foundInput)) {
+          priceInput = foundInput;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
+    // Fallback: search by attributes
+    if (!priceInput) {
+      const allInputs = Array.from(modal.querySelectorAll('input'))
+        .filter(el => isElementVisible(el) && !el.closest('[data-eldorado-ui]'));
+
+      priceInput = allInputs.find(el => {
+        const type = (el.getAttribute('type') || '').toLowerCase();
+        const name = (el.getAttribute('name') || '').toLowerCase();
+        const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
+        const className = (el.className || '').toLowerCase();
+        return type === 'number' || 
+               name.includes('price') || 
+               placeholder.includes('price') || 
+               className.includes('price') ||
+               className.includes('amount');
+      });
+
+      if (!priceInput) {
+        priceInput = allInputs.find(el => {
+          const type = (el.getAttribute('type') || '').toLowerCase();
+          return type === 'number' || type === 'text' || !type;
+        });
+      }
+
+      if (!priceInput) {
+        priceInput = allInputs[0];
+      }
+    }
+
+    if (!priceInput) {
+      if (statusCallback) statusCallback('Price field not found!');
+      console.warn('[Eldorado Filter] No input found in modal.');
+      return;
+    }
+
+    console.log('[Eldorado Filter] Price input found:', priceInput.outerHTML.slice(0, 120));
+
+    // ── Step 4: Fill price via chrome.scripting.executeScript (world: MAIN) ──
+    // Script-tag injection is blocked by the site's CSP. In MV3 we use
+    // chrome.scripting.executeScript with world:'MAIN' which is CSP-exempt.
+    const priceValue = totalPrice.toFixed(2);
+    const priceInt   = String(Math.round(totalPrice));
+
+    const fillPriceInMainWorld = (targetDecimal, targetInt) => {
+      // This function runs in the MAIN world (Angular's world).
+      try {
+        const TARGET_VALUE = targetDecimal;
+        const TARGET_INT   = targetInt;
+
+        // ── Find the price input ─────────────────────────────────────────────
+        // Confirmed from page inspection: aria-label="Numeric input field"
+        let input = document.querySelector('input[aria-label="Numeric input field"]');
+        console.log('[Eldorado] aria-label search:', input ? 'FOUND' : 'not found');
+
+        if (!input) {
+          input = Array.from(document.querySelectorAll('input[inputmode="decimal"], input[inputmode="numeric"]'))
+            .find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+          console.log('[Eldorado] inputmode search:', input ? 'FOUND' : 'not found');
+        }
+        if (!input) {
+          const dialog = document.querySelector('[role="dialog"]');
+          if (dialog) {
+            input = Array.from(dialog.querySelectorAll('input'))
+              .find(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+          }
+          console.log('[Eldorado] dialog fallback:', input ? 'FOUND' : 'not found');
+        }
+        if (!input) { console.warn('[Eldorado] NO INPUT FOUND'); return; }
+
+        console.log('[Eldorado] Target input:', input.outerHTML.slice(0, 150));
+        console.log('[Eldorado] Current value:', JSON.stringify(input.value));
+
+        const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+
+        function tryFill(el, val, label) {
+          el.click();
+          el.focus();
+          // A) execCommand — gold standard, triggers Angular's zone
+          el.select();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+          const ok = document.execCommand('insertText', false, val);
+          console.log('[Eldorado]', label, 'execCommand:', ok, '→', JSON.stringify(el.value));
+          if (ok && el.value === val) return true;
+          // B) Native setter + InputEvent
+          nativeSetter.call(el, '');
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          nativeSetter.call(el, val);
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: val }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+          console.log('[Eldorado]', label, 'nativeSetter →', JSON.stringify(el.value));
+          return el.value === val;
+        }
+
+        // Attempt 1 — immediate
+        let ok = tryFill(input, TARGET_VALUE, 'sync');
+        if (!ok) ok = tryFill(input, TARGET_INT, 'sync-int');
+        console.log('[Eldorado] Sync fill:', ok, JSON.stringify(input.value));
+
+        // Attempt 2 — 150ms (after Angular change-detection tick)
+        window.setTimeout(() => {
+          if (input.value === TARGET_VALUE || input.value === TARGET_INT) {
+            console.log('[Eldorado] t=150ms already correct:', input.value);
+            return;
+          }
+          console.log('[Eldorado] t=150ms value reset to', JSON.stringify(input.value), '— retrying');
+          let ok2 = tryFill(input, TARGET_VALUE, '150ms');
+          if (!ok2) ok2 = tryFill(input, TARGET_INT, '150ms-int');
+
+          // Attempt 3 — 500ms (final)
+          window.setTimeout(() => {
+            console.log('[Eldorado] t=500ms final value:', JSON.stringify(input.value));
+            if (input.value !== TARGET_VALUE && input.value !== TARGET_INT) {
+              tryFill(input, TARGET_VALUE, '500ms');
+              if (input.value !== TARGET_VALUE) tryFill(input, TARGET_INT, '500ms-int');
+            }
+          }, 350);
+        }, 150);
+
+      } catch(e) {
+        console.error('[Eldorado] fillPrice error:', e.message);
+      }
+    };
+
+    // chrome.scripting.executeScript is available in MV3 content scripts
+    if (typeof chrome !== 'undefined' && chrome.scripting && chrome.scripting.executeScript) {
+      chrome.scripting.executeScript({
+        target: { tabId: chrome.devtools?.inspectedWindow?.tabId || -1 },
+        world: 'MAIN',
+        func: fillPriceInMainWorld,
+        args: [priceValue, priceInt]
+      }).then(() => {
+        console.log('[Eldorado Filter] executeScript dispatched');
+      }).catch(err => {
+        console.warn('[Eldorado Filter] executeScript failed:', err.message, '— falling back to content script fill');
+        // Fallback: run directly in content script (isolated world)
+        // Events fired from isolated world still propagate to Angular's listeners
+        fillPriceInMainWorld(priceValue, priceInt);
+      });
+    } else {
+      // Fallback for environments where scripting API isn't available
+      console.warn('[Eldorado Filter] chrome.scripting not available — using content script fill');
+      fillPriceInMainWorld(priceValue, priceInt);
+    }
+
+    if (statusCallback) statusCallback('Filling price...');
+
+    // ── Step 5: Handle "Delivery time" dropdown ────────────────────────
+    // Delay until after all price fill attempts are complete (~550ms)
+    setTimeout(() => {
+      // Try native select first
+      const nativeSelect = modal.querySelector('select');
+      if (nativeSelect) {
+        console.log('[Eldorado Filter] Found native select element');
+        const options = Array.from(nativeSelect.options);
+        let bestOption = options.find(o => {
+          const t = o.textContent.toLowerCase().trim();
+          return t.includes(`${deadlineDays} day`) || t === `${deadlineDays}`;
+        });
+        if (!bestOption) {
+          bestOption = options.find(o => {
+            const n = parseInt(o.textContent.match(/\d+/)?.[0]);
+            return !isNaN(n) && n >= deadlineDays;
+          });
+        }
+        if (!bestOption && options.length > 0) {
+          bestOption = options[options.length - 1];
+        }
+        if (bestOption) {
+          console.log('[Eldorado Filter] Selecting native option:', bestOption.textContent);
+          nativeSelect.value = bestOption.value;
+          nativeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+          nativeSelect.dispatchEvent(new Event('blur', { bubbles: true }));
+          if (statusCallback) statusCallback('✅ Filled! Review & send');
+          return;
+        }
+      }
+
+      // If not native select, try custom dropdown trigger
+      let dropdownTrigger = null;
+
+      // Find "Delivery time" label or text to locate its corresponding control
+      let deliveryLabel = null;
+      const allElements = Array.from(modal.querySelectorAll('*'));
+      for (const el of allElements) {
+        const text = (el.textContent || '').trim();
+        if (/^delivery\s*time:?$/i.test(text)) {
+          deliveryLabel = el;
+          break;
+        }
+      }
+      if (!deliveryLabel) {
+        for (const el of allElements) {
+          const text = (el.textContent || '').trim().toLowerCase();
+          if (text.includes('delivery') && text.length < 30) {
+            deliveryLabel = el;
+            break;
+          }
+        }
+      }
+
+      if (deliveryLabel) {
+        let parent = deliveryLabel.parentElement;
+        while (parent && parent !== modal) {
+          const trigger = parent.querySelector('button, [role="button"], [role="combobox"]');
+          if (trigger && trigger !== deliveryLabel && isElementVisible(trigger)) {
+            dropdownTrigger = trigger;
+            break;
+          }
+          const customDiv = parent.querySelector('div[class*="select" i], div[class*="dropdown" i], div[class*="control" i]');
+          if (customDiv && customDiv !== deliveryLabel && isElementVisible(customDiv)) {
+            dropdownTrigger = customDiv;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+      }
+
+      // Fallback: search for "Select an option" or similar text
+      if (!dropdownTrigger) {
+        const allClickables = Array.from(modal.querySelectorAll('button, div, span, [role="button"], [role="combobox"]'))
+          .filter(el => isElementVisible(el) && !el.closest('[data-eldorado-ui]'));
+        dropdownTrigger = allClickables.find(el => {
+          const t = (el.textContent || '').toLowerCase().trim();
+          return t.includes('select an option') || t.includes('select option') || t.includes('select...');
+        });
+      }
+
+      if (!dropdownTrigger) {
+        console.warn('[Eldorado Filter] Delivery dropdown trigger not found. Price was filled.');
+        if (statusCallback) statusCallback('✅ Price filled! Set delivery manually');
+        return;
+      }
+
+      console.log('[Eldorado Filter] Clicking delivery dropdown:', dropdownTrigger.textContent.trim());
+      dropdownTrigger.click();
+      dropdownTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+      // ── Step 6: Pick the right delivery option ──────────────────────────────
+      let optionAttempts = 0;
+      const findAndClickOption = () => {
+        optionAttempts++;
+        const allElementsOnPage = Array.from(document.querySelectorAll('div, li, button, [role="option"], span, a'));
+        const allVisible = allElementsOnPage.filter(el => {
+          if (!isElementVisible(el) || el.closest('[data-eldorado-ui]')) return false;
+          const text = (el.textContent || '').trim();
+          return text.length > 0 && text.length < 30;
+        });
+
+        let bestOption = null;
+        let bestScore = -1;
+
+        for (const el of allVisible) {
+          const text = el.textContent.trim().toLowerCase();
+          const match = text.match(/(\d+)\s*(day|hour|d|h)s?/i);
+          let valueDays = null;
+          if (match) {
+            const val = parseInt(match[1], 10);
+            const unit = match[2].toLowerCase();
+            if (unit.startsWith('h')) {
+              valueDays = val / 24;
+            } else {
+              valueDays = val;
+            }
+          } else {
+            const plainNumMatch = text.match(/^\d+$/);
+            if (plainNumMatch) {
+              valueDays = parseInt(plainNumMatch[0], 10);
+            }
+          }
+
+          if (valueDays !== null) {
+            let matchScore = 0;
+            if (valueDays === deadlineDays) {
+              matchScore = 100;
+            } else if (valueDays > deadlineDays) {
+              matchScore = 50 - (valueDays - deadlineDays);
+            } else {
+              matchScore = 1;
+            }
+
+            let contextScore = 0;
+            if (el.getAttribute('role') === 'option') contextScore += 50;
+            const nearestListbox = el.closest('[role="listbox"], [role="menu"], [role="presentation"]');
+            if (nearestListbox) contextScore += 40;
+
+            let hasDropdownClass = false;
+            let curr = el;
+            while (curr && curr !== document.body) {
+              const className = (curr.className || '').toString().toLowerCase();
+              if (className.includes('select') || 
+                  className.includes('menu') || 
+                  className.includes('dropdown') || 
+                  className.includes('option') || 
+                  className.includes('portal') || 
+                  className.includes('popup') ||
+                  className.includes('listbox')) {
+                hasDropdownClass = true;
+                break;
+              }
+              curr = curr.parentElement;
+            }
+            if (hasDropdownClass) contextScore += 30;
+            if (modal && modal.contains(el)) contextScore += 20;
+
+            const tag = el.tagName.toLowerCase();
+            if (tag === 'li' || tag === 'button' || tag === 'option') contextScore += 15;
+
+            try {
+              const style = window.getComputedStyle(el);
+              if (style.position === 'absolute' || style.position === 'fixed') contextScore += 10;
+            } catch(e) {}
+
+            let isBackground = false;
+            let parent = el.parentElement;
+            while (parent && parent !== document.body) {
+              if (parent.tagName === 'A' || (parent.className || '').toString().toLowerCase().includes('card')) {
+                if (modal && modal.contains(parent)) {
+                  // not background
+                } else {
+                  isBackground = true;
+                  break;
+                }
+              }
+              parent = parent.parentElement;
+            }
+            if (isBackground) contextScore -= 60; // Penalize background cards heavily
+
+            const totalScore = matchScore + contextScore;
+            if (totalScore > bestScore && matchScore > 0) {
+              bestScore = totalScore;
+              bestOption = el;
+            }
+          }
+        }
+
+        if (bestOption && bestScore >= 70) {
+          console.log('[Eldorado Filter] Selecting delivery option:', bestOption.textContent.trim(), 'score:', bestScore);
+          bestOption.click();
+          bestOption.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          if (statusCallback) statusCallback('✅ Filled! Review & send');
+        } else {
+          if (optionAttempts < 15) {
+            console.log('[Eldorado Filter] Dropdown options not fully ready or scored low. Retrying... (Attempt ' + optionAttempts + ')');
+            setTimeout(findAndClickOption, 150);
+          } else {
+            console.warn('[Eldorado Filter] Failed to find a highly scored delivery option after retries.');
+            if (statusCallback) statusCallback('✅ Price filled! Set delivery manually');
+          }
+        }
+      };
+
+      setTimeout(findAndClickOption, 250);
+    }, 300);
+
+  }, 600);
+}
+
+// --- CS2 Premier Boosting Tracker ---
+function startCs2Tracker(template) {
+  let attempts = 0;
+  console.log(`[Eldorado Filter] CS2 tracker started. Template present: ${!!template}`);
+
+  // Show a floating status badge immediately so the user can see the tracker is running
+  let statusBadge = document.getElementById('eldorado-cs2-status');
+  if (!statusBadge) {
+    statusBadge = document.createElement('div');
+    statusBadge.id = 'eldorado-cs2-status';
+    statusBadge.style.cssText = [
+      'position:fixed', 'bottom:20px', 'right:20px', 'z-index:999999',
+      'background:linear-gradient(135deg,#271a0c,#1a1206)',
+      'border:1px solid #d97706', 'border-radius:10px',
+      'padding:10px 16px', 'color:#fbbf24',
+      'font-family:system-ui,sans-serif', 'font-size:13px', 'font-weight:700',
+      'box-shadow:0 4px 12px rgba(0,0,0,0.5)',
+      'display:flex', 'align-items:center', 'gap:8px',
+      'pointer-events:none'
+    ].join(';');
+    document.body.appendChild(statusBadge);
+  }
+  const updateBadge = (msg) => { if (statusBadge) statusBadge.innerHTML = `🔫 CS2: ${msg}`; };
+  const removeBadge = () => { if (statusBadge) { statusBadge.remove(); statusBadge = null; } };
+  updateBadge('Scanning page...');
+
+  // Helper to extract rating numbers robustly using keyword proximity
+  function extractRatingFromCorpus(corpus, keywords) {
+    corpus = corpus.toLowerCase();
+    for (const kw of keywords) {
+      const idx = corpus.indexOf(kw);
+      if (idx !== -1) {
+        // Get the next 150 characters to search for the rating number
+        const sub = corpus.slice(idx + kw.length, idx + kw.length + 150);
+        // Find all digit groups (possibly separated by space, dot, or comma)
+        const matches = sub.match(/\d+(?:[\s,.]\d+)*/g);
+        if (matches) {
+          let candidate = null;
+          for (const m of matches) {
+            const cleaned = m.replace(/[\s,.]/g, '');
+            const val = parseInt(cleaned, 10);
+            if (!isNaN(val)) {
+              // Prefer a large number that looks like a CS2 rating (>= 100)
+              if (val >= 100) {
+                console.log(`[Eldorado Filter] CS2 Rating Found (>=100): ${val} for keyword: "${kw}"`);
+                return val;
+              }
+              if (candidate === null) {
+                candidate = val;
+              }
+            }
+          }
+          if (candidate !== null) {
+            console.log(`[Eldorado Filter] CS2 Rating Found (fallback): ${candidate} for keyword: "${kw}"`);
+            return candidate;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  const cs2Interval = setInterval(() => {
+    attempts++;
+    
+    if (window.__eldoradoBreakdownClosed && !template) {
+      clearInterval(cs2Interval);
+      removeBadge();
+      return;
+    }
+    
+    updateBadge(`Scanning... (${attempts})`);
+
+    // Build a search corpus from BOTH visible text AND all input/select values
+    const visibleText = document.body.innerText || '';
+    const inputValues = Array.from(document.querySelectorAll('input, textarea, select'))
+      .map(el => {
+        const label = el.labels?.[0]?.textContent || el.placeholder || el.name || '';
+        const val = el.value || '';
+        return `${label}: ${val}`;
+      }).join('\n');
+    const searchCorpus = visibleText + '\n' + inputValues;
+
+    if (attempts === 1 || attempts % 5 === 0) {
+      console.log(`[Eldorado Filter] CS2 Scanner attempts: ${attempts}`);
+      console.log(`[Eldorado Filter] visibleText (first 500 chars):\n${visibleText.slice(0, 500)}`);
+      console.log(`[Eldorado Filter] inputValues:\n${inputValues}`);
+    }
+
+    const currentKeywords = ['enter your current rating', 'current rating', 'starting rating', 'start rating', 'current premier', 'current cs2', 'rating from', 'from rating', 'current:', 'current'];
+    const desiredKeywords = ['enter your desired rating', 'desired rating', 'target rating', 'desired premier', 'desired cs2', 'rating to', 'to rating', 'desired:', 'desired'];
+
+    const currentRating = extractRatingFromCorpus(searchCorpus, currentKeywords);
+    const desiredRating = extractRatingFromCorpus(searchCorpus, desiredKeywords);
+    
+    if (currentRating !== null && desiredRating !== null && desiredRating > currentRating) {
+      clearInterval(cs2Interval);
+      chrome.storage.local.remove('calculate_cs2_rating');
+      updateBadge(`Found: ${currentRating} → ${desiredRating}`);
+      console.log(`[Eldorado Filter] CS2 ratings determined successfully: ${currentRating} to ${desiredRating}`);
+      
+      // Calculate progressive pricing
+      let totalPrice = 0;
+      const tiers = [
+        { start: 0, end: 10000, price: currentSettings.priceCs2_0_10k, name: '0k - 10k' },
+        { start: 10000, end: 20000, price: currentSettings.priceCs2_10_20k, name: '10k - 20k' },
+        { start: 20000, end: 25000, price: currentSettings.priceCs2_20_25k, name: '20k - 25k' },
+        { start: 25000, end: Infinity, price: currentSettings.priceCs2_above25k, name: 'Above 25k' }
+      ];
+      
+      let breakdown = [];
+      
+      tiers.forEach(tier => {
+        const overlapStart = Math.max(currentRating, tier.start);
+        const overlapEnd = Math.min(desiredRating, tier.end);
+        
+        if (overlapStart < overlapEnd) {
+          const ratingInTier = overlapEnd - overlapStart;
+          const costInTier = (ratingInTier / 1000) * tier.price;
+          totalPrice += costInTier;
+          breakdown.push({
+            name: tier.name,
+            rating: ratingInTier,
+            cost: costInTier,
+            rate: tier.price
+          });
+        }
+      });
+      
+      // Calculate deadline
+      const ratingDiff = desiredRating - currentRating;
+      let deadlineDays = 1;
+      if (ratingDiff > 5000) {
+        deadlineDays = 3;
+      } else if (ratingDiff > 3000) {
+        deadlineDays = 2;
+      }
+      
+      // Inject CS2 Breakdown Card UI
+      const breakdownCard = document.createElement('div');
+      breakdownCard.className = 'eldorado-cs2-breakdown';
+      
+      let html = `
+        <div style="background: linear-gradient(135deg, #271a0c, #0f0b06); border: 1px solid #d97706; border-radius: 12px; padding: 24px; margin-bottom: 24px; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15); position: relative;">
+          <button class="close-breakdown-btn" style="position: absolute; top: 12px; right: 12px; background: transparent; border: none; color: #d97706; font-size: 16px; cursor: pointer; padding: 4px; border-radius: 4px;">✖</button>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid #d97706; padding-bottom: 12px; padding-right: 20px;">
+            <div style="display: flex; align-items: center;">
+              <span style="font-size: 24px; margin-right: 12px;">🔫</span>
+              <h3 style="margin: 0; font-size: 20px; font-weight: 700; color: #f59e0b; letter-spacing: 0.5px;">CS2 Premier Boosting</h3>
+            </div>
+            <div style="font-size: 22px; font-weight: 800; color: #fbbf24;">$${totalPrice.toFixed(2)}</div>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; background: rgba(217, 119, 6, 0.1); padding: 12px; border-radius: 8px;">
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: #fbbf24; font-weight: 600;">Current Rating</span>
+              <div style="font-size: 18px; font-weight: 700; color: #fff;">${currentRating}</div>
+            </div>
+            <div>
+              <span style="font-size: 11px; text-transform: uppercase; color: #fbbf24; font-weight: 600;">Desired Rating</span>
+              <div style="font-size: 18px; font-weight: 700; color: #fff;">${desiredRating}</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px;">
+      `;
+      
+      breakdown.forEach(item => {
+        html += `
+          <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; border-top: 4px solid #d97706; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div style="font-size: 11px; color: #cbd5e1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">${item.name}</div>
+            <div style="font-size: 18px; font-weight: 800; color: #fff;">+${item.rating} <span style="font-size: 11px; color: #94a3b8; font-weight: 400;">pts</span></div>
+            <div style="font-size: 11px; color: #fbbf24; margin-top: 4px; font-weight: 600;">$${item.cost.toFixed(2)} ($${item.rate}/k)</div>
+          </div>
+        `;
+      });
+      
+      html += `
+          </div>
+          
+          <div style="background: rgba(0,0,0,0.2); padding: 14px 20px; border-radius: 8px; font-weight: 700; display: flex; justify-content: space-between; align-items: center; border: 1px dashed #d97706; margin-bottom: 16px;">
+            <span style="color: #fff;">Boost Difference: +${ratingDiff}</span>
+            <span style="background: #d97706; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px;">Deadline: ${deadlineDays} Day${deadlineDays > 1 ? 's' : ''}</span>
+          </div>
+
+          <button class="auto-create-offer-btn" style="background-color: #d97706; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 800; cursor: pointer; width: 100%; transition: all 0.2s ease; box-shadow: 0 4px 6px rgba(217, 119, 6, 0.2); text-transform: uppercase; font-size: 13px; letter-spacing: 1px;">
+            ⚡ Auto-Create Offer — $${totalPrice.toFixed(2)} / ${deadlineDays} Day${deadlineDays > 1 ? 's' : ''}
+          </button>
+        </div>
+      `;
+      
+      breakdownCard.innerHTML = html;
+      
+      // Remove any existing breakdowns
+      document.querySelectorAll('.eldorado-r6-breakdown, .eldorado-cs2-breakdown').forEach(el => el.remove());
+      
+      // ALWAYS attach to document.body as a fixed overlay so React cannot destroy it
+      // Use setAttribute so !important survives any later style mutations
+      breakdownCard.setAttribute('data-eldorado-ui', 'true');
+      breakdownCard.setAttribute('style',
+        'position:fixed!important;top:20px!important;right:20px!important;' +
+        'z-index:2147483647!important;width:420px!important;max-height:85vh!important;overflow-y:auto!important'
+      );
+      document.body.appendChild(breakdownCard);
+
+      // Store so the guardian can re-inject it if React wipes it
+      window.__eldoradoActiveBreakdownHtml = breakdownCard.outerHTML;
+      window.__eldoradoActiveBreakdownClass = 'eldorado-cs2-breakdown';
+
+      removeBadge(); // Done scanning
+      
+      const autoCreateBtn = breakdownCard.querySelector('.auto-create-offer-btn');
+      if (autoCreateBtn) {
+        autoCreateBtn.onmouseover = () => autoCreateBtn.style.backgroundColor = '#b45309';
+        autoCreateBtn.onmouseout = () => autoCreateBtn.style.backgroundColor = '#d97706';
+        autoCreateBtn.addEventListener('click', () => {
+          autoFillAndCreateOffer(totalPrice, deadlineDays, (status) => {
+            autoCreateBtn.textContent = `⚡ ${status}`;
+          });
+        });
+      }
+      
+      const closeBtn = breakdownCard.querySelector('.close-breakdown-btn');
+      if (closeBtn) {
+        closeBtn.onmouseover = () => closeBtn.style.color = '#f87171';
+        closeBtn.onmouseout = () => closeBtn.style.color = '#d97706';
+        closeBtn.addEventListener('click', () => {
+          window.__eldoradoBreakdownClosed = true;
+          window.__eldoradoActiveBreakdownHtml = null;
+          breakdownCard.remove();
+        });
+      }
+      
+      let finalPitch = template;
+      if (finalPitch) {
+        finalPitch = finalPitch.replace(/\[GAMES\]/g, `+${ratingDiff} Rating (${currentRating} to ${desiredRating})`);
+        finalPitch = finalPitch.replace(/\[PRICE\]/g, totalPrice.toFixed(2));
+      }
+      
+      if (finalPitch) {
+        chrome.storage.local.set({
+          eldorado_auto_pitch: finalPitch,
+          calculate_cs2_rating: false
+        }, () => {
+          startChatFinder(finalPitch);
+        });
+      }
+      return;
+    }
+    
+    if (attempts > 60) { // 30 seconds
+      clearInterval(cs2Interval);
+      updateBadge('Could not find ratings.');
+      console.log('[Eldorado Filter] CS2 tracker timed out - ratings not found.');
+      setTimeout(removeBadge, 4000);
       if (template) {
         startChatFinder(template);
       }
@@ -702,6 +1506,104 @@ function startChatFinder(text) {
 let throttleTimer = null;
 let pendingProcess = false;
 
+// Guardian: re-inject the breakdown card if React wipes it from the DOM
+setInterval(() => {
+  if (window.__eldoradoBreakdownClosed) return;
+  if (!window.__eldoradoActiveBreakdownHtml || !window.__eldoradoActiveBreakdownClass) return;
+  const existing = document.querySelector('.' + window.__eldoradoActiveBreakdownClass);
+  if (!existing) {
+    console.log('[Eldorado Filter] Guardian: breakdown card missing, re-injecting...');
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = window.__eldoradoActiveBreakdownHtml;
+    const newCard = wrapper.firstChild;
+    if (newCard) {
+      // Re-wire the close button
+      const closeBtn = newCard.querySelector('.close-breakdown-btn');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          window.__eldoradoBreakdownClosed = true;
+          window.__eldoradoActiveBreakdownHtml = null;
+          newCard.remove();
+        });
+      }
+      // Re-wire Auto-Create button if present
+      const autoCreateBtn = newCard.querySelector('.auto-create-offer-btn');
+      if (autoCreateBtn) {
+        autoCreateBtn.addEventListener('click', () => {
+          // Button text contains the price; parse it out for re-use
+          const match = (autoCreateBtn.textContent || '').match(/\$([\d.]+)/);
+          const price = match ? parseFloat(match[1]) : 0;
+          autoFillAndCreateOffer(price, 1, (status) => {
+            autoCreateBtn.textContent = `⚡ ${status}`;
+          });
+        });
+      }
+      document.body.appendChild(newCard);
+    }
+  }
+}, 250);
+
+function checkAndRunBreakdown() {
+  const isEldorado = location.hostname.includes('eldorado.gg');
+  if (!isEldorado || window !== window.top) return;
+  
+  const pathname = location.pathname;
+  // Broaden the page check to include chat/users page URL paths
+  const isOrderOrChatPage = pathname.includes('/orders/') || 
+                            pathname.includes('/order/') || 
+                            pathname.includes('/chat/') || 
+                            pathname.includes('/users/');
+                            
+  if (isOrderOrChatPage) {
+    // Only start the tracker if it's not already running (tracked via global flag)
+    if (!window.__eldoradoTrackerRunning) {
+      chrome.storage.local.get(['eldorado_auto_pitch', 'calculate_r6_rp', 'calculate_cs2_rating'], (res) => {
+        if (res.eldorado_auto_pitch) {
+          if (res.calculate_r6_rp) {
+            if (!window.__eldoradoTrackerRunning) {
+              window.__eldoradoTrackerRunning = true;
+              console.log("[Eldorado Filter] Starting R6 tracker from storage (DOM Mutation / page load)");
+              startR6Tracker(res.eldorado_auto_pitch);
+            }
+          } else if (res.calculate_cs2_rating) {
+            if (!window.__eldoradoTrackerRunning) {
+              window.__eldoradoTrackerRunning = true;
+              console.log("[Eldorado Filter] Starting CS2 tracker from storage (DOM Mutation / page load)");
+              startCs2Tracker(res.eldorado_auto_pitch);
+            }
+          }
+        } else {
+          // View-only mode (direct access to order page without clicking Quick Pitch)
+          if (!window.__eldoradoBreakdownClosed && !window.__eldoradoTrackerRunning) {
+            const fullText = document.body.innerText || '';
+            
+            // Case-insensitive checks for R6S page keywords (check FIRST — more specific)
+            const isR6Page = /Rainbow\s*Six|R6S|Ranked\s*Boosting|rp\s*gain|current\s*rank|desired\s*rank/i.test(fullText);
+            
+            // Case-insensitive checks for CS2 premier page keywords (only if not R6S)
+            const isCs2Page = !isR6Page && (
+                              cs2Regex.test(fullText) || 
+                              /current\s*rating/i.test(fullText) || 
+                              /desired\s*rating/i.test(fullText) || 
+                              /enter\s*your\s*current/i.test(fullText)
+                            );
+            
+            if (isR6Page) {
+              window.__eldoradoTrackerRunning = true;
+              console.log("[Eldorado Filter] Starting R6 tracker in View-Only mode");
+              startR6Tracker(null);
+            } else if (isCs2Page) {
+              window.__eldoradoTrackerRunning = true;
+              console.log("[Eldorado Filter] Starting CS2 tracker in View-Only mode");
+              startCs2Tracker(null);
+            }
+          }
+        }
+      });
+    }
+  }
+}
+
 function throttledProcess() {
   if (throttleTimer) {
     pendingProcess = true;
@@ -709,6 +1611,7 @@ function throttledProcess() {
   }
   
   processAllOrders();
+  checkAndRunBreakdown();
   
   throttleTimer = setTimeout(() => {
     throttleTimer = null;
@@ -722,59 +1625,61 @@ function throttledProcess() {
 function initializeObserver() {
   const isEldorado = location.hostname.includes('eldorado.gg');
 
-  function checkAndRunViewOnlyBreakdown() {
-    if (!isEldorado || window !== window.top) return;
-    const isOrderPage = location.pathname.includes('/orders/') || location.pathname.includes('/order/');
-    if (isOrderPage) {
-      const alreadyHasBreakdown = document.querySelector('.eldorado-r6-breakdown');
-      if (!alreadyHasBreakdown && !window.__eldoradoBreakdownClosed) {
-        chrome.storage.local.get(['eldorado_auto_pitch'], (res) => {
-          if (!res.eldorado_auto_pitch) {
-            startR6Tracker(null);
-          }
-        });
-      }
+  // Listen for debug messages from the main world
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data && event.data.type === 'ELDORADO_MAIN_WORLD_LOG') {
+      console.log('[Eldorado Filter] Main World:', event.data.message);
+      const debugContainers = document.querySelectorAll('.eldorado-debug-logs');
+      debugContainers.forEach(c => {
+        c.style.display = 'block';
+        c.innerHTML += `<div>• ${event.data.message}</div>`;
+        c.scrollTop = c.scrollHeight;
+      });
     }
-  }
+  });
 
-  if (isEldorado) {
-    // Initial run
+  if (isEldorado && window === window.top) {
+    // Initial run for top window
     processAllOrders();
-    checkAndRunViewOnlyBreakdown();
-  }
-
-  // If we navigated to a new page after clicking Quick Pitch, start the chat finder or R6 Tracker
-  chrome.storage.local.get(['eldorado_auto_pitch', 'calculate_r6_rp'], (res) => {
-    if (res.eldorado_auto_pitch) {
-      if (res.calculate_r6_rp) {
-        if (isEldorado && window === window.top) {
-          // Only top window performs the R6S stats extraction and pricing calculation
-          startR6Tracker(res.eldorado_auto_pitch);
+    checkAndRunBreakdown();
+  } else {
+    // Iframe or cross-origin chat (e.g. TalkJS on talkjs.com)
+    chrome.storage.local.get(['eldorado_auto_pitch', 'calculate_r6_rp', 'calculate_cs2_rating'], (res) => {
+      if (res.eldorado_auto_pitch) {
+        if (!res.calculate_r6_rp && !res.calculate_cs2_rating) {
+          // Pitch is already computed and stored
+          startChatFinder(res.eldorado_auto_pitch);
         } else {
-          // If we are in an iframe (e.g. Chat iframe), wait until the top window calculations are complete and stored
+          // Wait for calculations to complete in top window
           const storageListener = (changes, area) => {
-            if (area === 'local' && changes.eldorado_auto_pitch && (!changes.calculate_r6_rp || !changes.calculate_r6_rp.newValue)) {
-              startChatFinder(changes.eldorado_auto_pitch.newValue);
-              chrome.storage.onChanged.removeListener(storageListener);
+            if (area === 'local' && changes.eldorado_auto_pitch) {
+              const calcR6 = changes.calculate_r6_rp ? changes.calculate_r6_rp.newValue : res.calculate_r6_rp;
+              const calcCs2 = changes.calculate_cs2_rating ? changes.calculate_cs2_rating.newValue : res.calculate_cs2_rating;
+              if (!calcR6 && !calcCs2) {
+                startChatFinder(changes.eldorado_auto_pitch.newValue);
+                chrome.storage.onChanged.removeListener(storageListener);
+              }
             }
           };
           chrome.storage.onChanged.addListener(storageListener);
         }
-      } else {
-        startChatFinder(res.eldorado_auto_pitch);
       }
-    }
-  });
+    });
+  }
 
   if (isEldorado) {
-    // Track URL changes to auto-remove the breakdown card when leaving the order page
-    let currentUrl = location.href;
+    // Track URL changes using location.pathname instead of location.href to ignore query/anchor parameter changes
+    let currentUrlPath = location.pathname;
     setInterval(() => {
-      if (currentUrl !== location.href) {
-        currentUrl = location.href;
+      if (currentUrlPath !== location.pathname) {
+        currentUrlPath = location.pathname;
+        console.log(`[Eldorado Filter] SPA Navigation (Pathname change) detected: ${currentUrlPath}`);
         window.__eldoradoBreakdownClosed = false; // Reset close state on navigation
-        document.querySelectorAll('.eldorado-r6-breakdown').forEach(el => el.remove());
-        checkAndRunViewOnlyBreakdown();
+        window.__eldoradoTrackerRunning = false;  // Allow tracker to start fresh on new page
+        window.__eldoradoActiveBreakdownHtml = null; // Clear cached card from previous page
+        document.querySelectorAll('.eldorado-r6-breakdown, .eldorado-cs2-breakdown').forEach(el => el.remove());
+        checkAndRunBreakdown();
       }
     }, 500);
 

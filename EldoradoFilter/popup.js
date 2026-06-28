@@ -11,7 +11,11 @@ const defaultSettings = {
   pricePlat: 2.0,
   priceEme: 2.5,
   priceDia: 3.5,
-  priceChamp: 5.0
+  priceChamp: 5.0,
+  priceCs2_0_10k: 10.0,
+  priceCs2_10_20k: 15.0,
+  priceCs2_20_25k: 20.0,
+  priceCs2_above25k: 25.0
 };
 
 // Map checkboxes to their elements
@@ -32,7 +36,11 @@ const priceInputs = {
   pricePlat: document.getElementById('pricePlat'),
   priceEme: document.getElementById('priceEme'),
   priceDia: document.getElementById('priceDia'),
-  priceChamp: document.getElementById('priceChamp')
+  priceChamp: document.getElementById('priceChamp'),
+  priceCs2_0_10k: document.getElementById('priceCs2_0_10k'),
+  priceCs2_10_20k: document.getElementById('priceCs2_10_20k'),
+  priceCs2_20_25k: document.getElementById('priceCs2_20_25k'),
+  priceCs2_above25k: document.getElementById('priceCs2_above25k')
 };
 
 // Load the settings from Chrome's synchronized storage and populate the inputs
